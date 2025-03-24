@@ -7,6 +7,7 @@ import Response from './Response';
 import { useToast } from '@/components/ui/use-toast';
 import { popIn } from '@/utils/animations';
 import { v4 as uuidv4 } from 'uuid';
+import useVoiceRecognition from '@/hooks/use-voice-recognition';
 
 // Mock API response delay
 const simulateResponse = async (text: string): Promise<string> => {
@@ -43,9 +44,31 @@ const ActionPanel: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-
-  // Capture listening state if we implement voice input
-  const [isListening, setIsListening] = useState(false);
+  
+  // Voice recognition integration
+  const { 
+    isListening, 
+    startListening, 
+    stopListening, 
+    transcript 
+  } = useVoiceRecognition({
+    onResult: (finalTranscript) => {
+      if (finalTranscript.trim()) {
+        setInput(finalTranscript);
+        // Auto-submit if we have a final transcript that's not too short
+        if (finalTranscript.length > 5) {
+          handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+        }
+      }
+    },
+    onError: (errorMessage) => {
+      toast({
+        title: "Voice Recognition Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  });
   
   // Animation refs
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -63,6 +86,13 @@ const ActionPanel: React.FC = () => {
       inputRef.current.focus();
     }
   }, []);
+
+  // Update input when transcript changes during listening
+  useEffect(() => {
+    if (isListening && transcript) {
+      setInput(transcript);
+    }
+  }, [transcript, isListening]);
 
   const handleSuggestionClick = (suggestion: SuggestionItem) => {
     setInput(suggestion.text);
@@ -142,14 +172,19 @@ const ActionPanel: React.FC = () => {
   };
   
   const handleVoiceInput = () => {
-    // Toggle listening state
-    setIsListening(prevState => !prevState);
-    
-    // For now just show a toast - would implement actual speech recognition later
-    toast({
-      title: "Voice Input",
-      description: "Voice recognition is coming soon to ActionAlly."
-    });
+    if (isListening) {
+      stopListening();
+      toast({
+        title: "Voice Input Stopped",
+        description: "I'm no longer listening."
+      });
+    } else {
+      startListening();
+      toast({
+        title: "Voice Input Active",
+        description: "I'm listening. Speak your request."
+      });
+    }
   };
   
   // Generate welcome message on first load
@@ -232,12 +267,13 @@ const ActionPanel: React.FC = () => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="What would you like me to do for you?"
+                placeholder={isListening ? "Listening..." : "What would you like me to do for you?"}
                 className={cn(
                   "w-full py-3 px-4 pr-12 rounded-lg",
                   "border border-input bg-background",
                   "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-40",
-                  "placeholder:text-muted-foreground/60 transition-shadow duration-200"
+                  "placeholder:text-muted-foreground/60 transition-shadow duration-200",
+                  isListening && "border-primary border-2 animate-pulse"
                 )}
                 disabled={isProcessing}
               />
@@ -268,7 +304,7 @@ const ActionPanel: React.FC = () => {
               className={cn(
                 "p-3 rounded-full transition-colors duration-200",
                 isListening 
-                  ? "bg-primary text-primary-foreground" 
+                  ? "bg-primary text-primary-foreground pulse-glow" 
                   : "bg-secondary text-foreground hover:bg-secondary/80",
                 "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50"
               )}
@@ -279,6 +315,13 @@ const ActionPanel: React.FC = () => {
           </div>
         </form>
       </div>
+      
+      {/* Voice recognition status indicator */}
+      {isListening && (
+        <div className="text-center py-2 text-sm text-primary animate-pulse">
+          Listening... Speak now.
+        </div>
+      )}
     </div>
   );
 };
