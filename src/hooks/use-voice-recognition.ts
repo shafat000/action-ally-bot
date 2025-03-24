@@ -5,6 +5,7 @@ interface UseVoiceRecognitionProps {
   onResult?: (transcript: string) => void;
   onError?: (error: string) => void;
   language?: string;
+  maxNetworkRetries?: number;
 }
 
 interface UseVoiceRecognitionReturn {
@@ -70,53 +71,99 @@ const useVoiceRecognition = ({
   onResult,
   onError,
   language = 'en-US',
+  maxNetworkRetries = 3,
 }: UseVoiceRecognitionProps = {}): UseVoiceRecognitionReturn => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [networkRetries, setNetworkRetries] = useState(0);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
   
-  // Reference to the SpeechRecognition instance
-  const recognitionRef = useCallback(() => {
+  // Initialize the SpeechRecognition API
+  const initializeRecognition = useCallback(() => {
     // Browser compatibility check
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError('Speech recognition is not supported in this browser');
-      if (onError) onError('Speech recognition is not supported in this browser');
+      const errorMsg = 'Speech recognition is not supported in this browser';
+      setError(errorMsg);
+      if (onError) onError(errorMsg);
       return null;
     }
     
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = language;
+    const instance = new SpeechRecognition();
     
-    return recognition;
-  }, [language, onError]);
-  
-  const startListening = useCallback(() => {
-    const recognition = recognitionRef();
-    if (!recognition) return;
+    // Configure the recognition instance
+    instance.continuous = true;
+    instance.interimResults = true;
+    instance.lang = language;
     
-    setError(null);
-    setTranscript('');
-    
-    recognition.onstart = () => {
+    // Set event handlers
+    instance.onstart = () => {
+      console.log('Voice recognition started');
       setIsListening(true);
+      setError(null);
     };
     
-    recognition.onerror = (event: any) => {
-      const errorMessage = `Speech recognition error: ${event.error}`;
-      setError(errorMessage);
-      if (onError) onError(errorMessage);
+    instance.onerror = (event: any) => {
+      console.log('Speech recognition error:', event.error);
+      
+      if (event.error === 'network') {
+        const errorMessage = `Speech recognition network error. Please check your internet connection.`;
+        console.warn(errorMessage);
+        
+        if (networkRetries < maxNetworkRetries) {
+          setNetworkRetries(prev => prev + 1);
+          console.log(`Retrying connection (${networkRetries + 1}/${maxNetworkRetries})`);
+          
+          // Attempt to restart with a delay
+          setTimeout(() => {
+            try {
+              instance.stop();
+              setTimeout(() => instance.start(), 500);
+            } catch (e) {
+              console.error('Error during retry:', e);
+            }
+          }, 1000);
+          return;
+        }
+        
+        setError(errorMessage);
+        if (onError) onError(errorMessage);
+        setIsListening(false);
+      } else {
+        const errorMessage = `Speech recognition error: ${event.error}`;
+        setError(errorMessage);
+        if (onError) onError(errorMessage);
+      }
     };
     
-    recognition.onend = () => {
-      setIsListening(false);
+    instance.onend = () => {
+      console.log('Voice recognition ended');
+      
+      // Only attempt to restart if we were actively listening
+      // and it wasn't manually stopped (isListening will be false if manually stopped)
+      if (isListening && networkRetries < maxNetworkRetries) {
+        try {
+          console.log('Restarting recognition after unexpected end');
+          setTimeout(() => instance.start(), 300);
+        } catch (e) {
+          console.error('Failed to restart recognition:', e);
+          setIsListening(false);
+        }
+      } else {
+        setIsListening(false);
+      }
     };
     
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    instance.onresult = (event: SpeechRecognitionEvent) => {
+      // Reset network retries on successful result
+      setNetworkRetries(0);
+      
+      // Get the current result
       const current = event.resultIndex;
       const transcriptResult = event.results[current][0].transcript;
+      
+      // Update transcript state
       setTranscript(transcriptResult);
       
       // If we have a final result, call the onResult callback
@@ -125,34 +172,57 @@ const useVoiceRecognition = ({
       }
     };
     
+    return instance;
+  }, [language, onError, onResult, isListening, networkRetries, maxNetworkRetries]);
+  
+  // Start listening for speech
+  const startListening = useCallback(() => {
+    // Reset state
+    setError(null);
+    setTranscript('');
+    setNetworkRetries(0);
+    
     try {
-      recognition.start();
+      // Create a new instance each time to avoid any stale state
+      const newRecognition = initializeRecognition();
+      if (!newRecognition) return;
+      
+      setRecognition(newRecognition);
+      newRecognition.start();
+      console.log('Voice recognition requested to start');
     } catch (err) {
       const errorMessage = `Could not start speech recognition: ${err}`;
+      console.error(errorMessage);
       setError(errorMessage);
       if (onError) onError(errorMessage);
     }
-  }, [recognitionRef, onResult, onError]);
+  }, [initializeRecognition, onError]);
   
+  // Stop listening for speech
   const stopListening = useCallback(() => {
-    const recognition = recognitionRef();
-    if (!recognition) return;
-    
-    recognition.stop();
+    if (recognition) {
+      try {
+        recognition.stop();
+        console.log('Voice recognition stopped manually');
+      } catch (err) {
+        console.error('Error stopping recognition:', err);
+      }
+    }
     setIsListening(false);
-  }, [recognitionRef]);
+  }, [recognition]);
   
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      if (isListening) {
-        const recognition = recognitionRef();
-        if (recognition) {
+      if (recognition) {
+        try {
           recognition.stop();
+        } catch (e) {
+          console.error('Error cleaning up recognition:', e);
         }
       }
     };
-  }, [isListening, recognitionRef]);
+  }, [recognition]);
   
   return {
     isListening,
