@@ -15,9 +15,55 @@ interface UseVoiceRecognitionReturn {
   error: string | null;
 }
 
-// Define the SpeechRecognition type to avoid TypeScript errors
+// Define proper TypeScript interfaces for the Web Speech API
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
+  resultIndex: number;
+  interpretation: any;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal?: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onerror: (event: any) => void;
+  onend: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onstart: () => void;
+}
+
+// Define the global SpeechRecognition constructor
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition;
+}
+
+// Extend the Window interface to include SpeechRecognition
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
 }
 
 const useVoiceRecognition = ({
