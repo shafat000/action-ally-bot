@@ -1,8 +1,10 @@
 
-import React, { useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
-import { BrainCircuit, Sun, Moon } from 'lucide-react';
-import { useIsMobile } from '@/hooks/use-mobile';
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import { Sun, Moon, LogOut, User } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
   toggleTheme: () => void;
@@ -10,63 +12,42 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ toggleTheme, isDarkMode }) => {
-  const headerRef = useRef<HTMLDivElement>(null);
-  const logoRef = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (headerRef.current) {
-        const scrollPosition = window.scrollY;
-        if (scrollPosition > 10) {
-          headerRef.current.classList.add('glass-effect', 'shadow-soft');
-        } else {
-          headerRef.current.classList.remove('glass-effect', 'shadow-soft');
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   return (
-    <header
-      ref={headerRef}
-      className={cn(
-        "fixed top-0 left-0 right-0 z-50 px-6 py-4 transition-all duration-300",
-        "flex items-center justify-between"
-      )}
-    >
-      <div 
-        ref={logoRef}
-        className="flex items-center space-x-3"
-      >
-        <div className="relative">
-          <BrainCircuit className="h-8 w-8 text-primary" />
-          <div className="absolute inset-0 bg-primary rounded-full opacity-20 animate-pulse" />
+    <header className={cn(
+      "fixed top-0 left-0 right-0 z-50 p-4",
+      "bg-background/80 backdrop-blur-md border-b border-border"
+    )}>
+      <div className="container mx-auto flex justify-between items-center">
+        <div className="flex items-center">
+          <h1 className="text-xl font-bold">ActionAlly</h1>
         </div>
-        <span className="font-semibold text-xl tracking-tight">
-          {isMobile ? "ActionAlly" : "ActionAlly"}
-        </span>
-      </div>
-      
-      <div className="flex items-center space-x-4">
-        <button
-          onClick={toggleTheme}
-          className={cn(
-            "p-2 rounded-full transition-colors duration-200",
-            "hover:bg-secondary flex items-center justify-center",
-            "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50"
+        <div className="flex items-center gap-4">
+          {user && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <User className="h-4 w-4" />
+              <span>{user.name || user.email}</span>
+            </div>
           )}
-          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {isDarkMode ? (
-            <Sun className="h-5 w-5" />
-          ) : (
-            <Moon className="h-5 w-5" />
+          
+          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </Button>
+          
+          {user && (
+            <Button variant="outline" size="sm" onClick={handleLogout} className="flex items-center gap-1">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
           )}
-        </button>
+        </div>
       </div>
     </header>
   );
