@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import Header from '@/components/Header';
@@ -22,18 +21,10 @@ const Index = () => {
       document.documentElement.classList.add('dark');
     }
     
-    // Apply animations
-    if (mainRef.current) {
-      fadeIn(mainRef.current, 0);
-    }
-    
-    if (titleRef.current) {
-      popIn(titleRef.current, 0.3);
-    }
-    
-    if (subtitleRef.current) {
-      popIn(subtitleRef.current, 0.4);
-    }
+    // Apply animations safely
+    fadeIn(mainRef.current);
+    popIn(titleRef.current, 0.3);
+    popIn(subtitleRef.current, 0.4);
   }, []);
   
   const toggleTheme = () => {

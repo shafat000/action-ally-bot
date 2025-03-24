@@ -51,7 +51,7 @@ const ActionPanel: React.FC = () => {
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
-    // Apply animations to suggestions
+    // Apply animations to suggestions safely
     suggestionRefs.current.forEach((ref, index) => {
       if (ref) {
         popIn(ref, 0.1 * index);
