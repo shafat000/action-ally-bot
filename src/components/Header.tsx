@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Sun, Moon, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface HeaderProps {
   toggleTheme: () => void;
@@ -13,11 +13,32 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ toggleTheme, isDarkMode }) => {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  
+  // Create a safe navigation function that checks if we're in a Router context
+  const safeNavigate = () => {
+    try {
+      const navigate = useNavigate();
+      return navigate;
+    } catch (error) {
+      // If useNavigate throws an error, return a dummy function
+      console.warn("Navigation not available, likely outside Router context");
+      return () => {};
+    }
+  };
+  
+  // Get the navigation function safely
+  const navigate = safeNavigate();
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    // Only try to navigate if we're in a Router context
+    try {
+      navigate('/login');
+    } catch (error) {
+      console.warn("Navigation failed, likely outside Router context");
+      // Fallback: use window.location as a last resort
+      window.location.href = '/login';
+    }
   };
 
   return (
