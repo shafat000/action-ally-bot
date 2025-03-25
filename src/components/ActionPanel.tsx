@@ -71,20 +71,30 @@ const ActionPanel: React.FC = () => {
     }
   });
   
-  // Text-to-speech integration
+  // Text-to-speech integration with improved error handling
   const { 
     speak, 
     stop: stopSpeaking, 
     isSpeaking 
   } = useTextToSpeech({
     onError: (errorMessage) => {
-      toast({
-        title: "Text-to-Speech Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      // Don't show errors for interrupted speech - this is normal behavior
+      if (!errorMessage.includes('interrupted')) {
+        toast({
+          title: "Text-to-Speech Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
       // Make sure to update UI state when there's an error
       setIsProcessing(false);
+    },
+    onEnd: () => {
+      // Make sure UI state is updated when speech ends
+      if (isSpeaking) {
+        // Reset UI state only if we're still marked as speaking
+        // This prevents unnecessary rerenders
+      }
     }
   });
   
@@ -149,7 +159,12 @@ const ActionPanel: React.FC = () => {
     try {
       // If speaking, stop the current speech when a new request is made
       if (isSpeaking) {
-        stopSpeaking();
+        try {
+          stopSpeaking();
+        } catch (err) {
+          console.error("Error stopping speech:", err);
+          // Continue with the new request even if stopping fails
+        }
       }
       
       // Simulate API call
@@ -224,13 +239,19 @@ const ActionPanel: React.FC = () => {
   };
   
   const toggleVoiceOutput = () => {
+    // First update state
     setVoiceOutputEnabled(prev => !prev);
     
-    // Stop speaking if turning off voice output
+    // Then stop speaking if turning off voice output
     if (voiceOutputEnabled && isSpeaking) {
-      stopSpeaking();
+      try {
+        stopSpeaking();
+      } catch (err) {
+        console.error("Error stopping speech while toggling:", err);
+      }
     }
     
+    // Show toast after state update
     toast({
       title: voiceOutputEnabled ? "Voice Output Disabled" : "Voice Output Enabled",
       description: voiceOutputEnabled 

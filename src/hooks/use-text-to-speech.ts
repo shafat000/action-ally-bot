@@ -62,8 +62,13 @@ const useTextToSpeech = ({
 
       // Clean up on unmount
       return () => {
-        if (synth.current?.speaking) {
-          synth.current.cancel();
+        if (synth.current) {
+          try {
+            // Make sure to cancel any speech when component unmounts
+            synth.current.cancel();
+          } catch (error) {
+            console.error('Error canceling speech on unmount:', error);
+          }
         }
       };
     } else {
@@ -80,11 +85,34 @@ const useTextToSpeech = ({
     }
 
     try {
-      // Cancel any ongoing speech
+      // Cancel any ongoing speech - this is important to prevent the "interrupted" error
       if (synth.current.speaking) {
-        synth.current.cancel();
+        try {
+          synth.current.cancel();
+          // Small delay to ensure the previous speech is fully canceled
+          setTimeout(() => {
+            startSpeaking(text);
+          }, 50);
+        } catch (error) {
+          console.error('Error canceling previous speech:', error);
+          if (onError) onError(`Error canceling previous speech: ${error}`);
+        }
+      } else {
+        startSpeaking(text);
       }
+    } catch (error) {
+      console.error('Error in speech synthesis:', error);
+      setIsSpeaking(false);
+      setIsPaused(false);
+      if (onError) onError(`Error in speech synthesis: ${error}`);
+    }
+  }, [rate, pitch, volume, voice, voices, onStart, onEnd, onError]);
 
+  // Helper function to start speaking - extracted to avoid code duplication
+  const startSpeaking = useCallback((text: string) => {
+    if (!synth.current) return;
+    
+    try {
       // Create a new utterance
       const utterance = new SpeechSynthesisUtterance(text);
       utteranceRef.current = utterance;
@@ -115,16 +143,23 @@ const useTextToSpeech = ({
 
       utterance.onerror = (event) => {
         console.error('Speech synthesis error:', event);
-        setIsSpeaking(false);
-        setIsPaused(false);
-        if (onError) onError(`Speech synthesis error: ${event.error}`);
+        
+        // Special handling for "interrupted" error which is common and often not a real error
+        if (event.error === 'interrupted') {
+          console.log('Speech was interrupted, likely due to new speech request');
+        } else {
+          setIsSpeaking(false);
+          setIsPaused(false);
+          if (onError) onError(`Speech synthesis error: ${event.error}`);
+        }
       };
 
       // Start speaking
       synth.current.speak(utterance);
     } catch (error) {
-      console.error('Error in speech synthesis:', error);
-      if (onError) onError(`Error in speech synthesis: ${error}`);
+      console.error('Error starting speech:', error);
+      setIsSpeaking(false);
+      if (onError) onError(`Error starting speech: ${error}`);
     }
   }, [rate, pitch, volume, voice, voices, onStart, onEnd, onError]);
 
