@@ -1,13 +1,13 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { SendHorizontal, Mic, Globe, ShoppingCart, CalendarDays, Loader2 } from 'lucide-react';
+import { SendHorizontal, Mic, Globe, ShoppingCart, CalendarDays, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { ActionRequest, ActionResponse, SuggestionItem } from '@/types';
 import Response from './Response';
 import { useToast } from '@/components/ui/use-toast';
 import { popIn } from '@/utils/animations';
 import { v4 as uuidv4 } from 'uuid';
 import useVoiceRecognition from '@/hooks/use-voice-recognition';
+import useTextToSpeech from '@/hooks/use-text-to-speech';
 
 // Mock API response delay
 const simulateResponse = async (text: string): Promise<string> => {
@@ -41,6 +41,7 @@ const ActionPanel: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [requests, setRequests] = useState<ActionRequest[]>([]);
   const [responses, setResponses] = useState<ActionResponse[]>([]);
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -64,6 +65,21 @@ const ActionPanel: React.FC = () => {
     onError: (errorMessage) => {
       toast({
         title: "Voice Recognition Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  });
+  
+  // Text-to-speech integration
+  const { 
+    speak, 
+    stop: stopSpeaking, 
+    isSpeaking 
+  } = useTextToSpeech({
+    onError: (errorMessage) => {
+      toast({
+        title: "Text-to-Speech Error",
         description: errorMessage,
         variant: "destructive",
       });
@@ -129,23 +145,32 @@ const ActionPanel: React.FC = () => {
     setResponses(prev => [...prev, processingResponse]);
     
     try {
+      // If speaking, stop the current speech when a new request is made
+      if (isSpeaking) {
+        stopSpeaking();
+      }
+      
       // Simulate API call
       const responseText = await simulateResponse(newRequest.text);
       
       // Remove processing message and add real response
+      const finalResponse: ActionResponse = {
+        id: uuidv4(),
+        requestId,
+        text: responseText,
+        timestamp: new Date(),
+        type: 'text'
+      };
+      
       setResponses(prev => {
         const filtered = prev.filter(r => r.id !== processingResponse.id);
-        return [
-          ...filtered, 
-          {
-            id: uuidv4(),
-            requestId,
-            text: responseText,
-            timestamp: new Date(),
-            type: 'text'
-          }
-        ];
+        return [...filtered, finalResponse];
       });
+      
+      // Speak the response if voice output is enabled
+      if (voiceOutputEnabled) {
+        speak(responseText);
+      }
       
       // Update request status
       setRequests(prev => 
@@ -187,20 +212,43 @@ const ActionPanel: React.FC = () => {
     }
   };
   
+  const toggleVoiceOutput = () => {
+    setVoiceOutputEnabled(prev => !prev);
+    
+    // Stop speaking if turning off voice output
+    if (voiceOutputEnabled && isSpeaking) {
+      stopSpeaking();
+    }
+    
+    toast({
+      title: voiceOutputEnabled ? "Voice Output Disabled" : "Voice Output Enabled",
+      description: voiceOutputEnabled 
+        ? "I'll respond with text only."
+        : "I'll respond with both text and voice."
+    });
+  };
+  
   // Generate welcome message on first load
   useEffect(() => {
     if (responses.length === 0) {
+      const welcomeText = "Hello, I'm your AI assistant. I can help you browse the web, shop online, schedule meetings, and much more. What would you like me to do for you today?";
+      
       setResponses([
         {
           id: uuidv4(),
           requestId: 'welcome',
-          text: "Hello, I'm your AI assistant. I can help you browse the web, shop online, schedule meetings, and much more. What would you like me to do for you today?",
+          text: welcomeText,
           timestamp: new Date(),
           type: 'text'
         }
       ]);
+      
+      // Speak welcome message if voice output is enabled
+      if (voiceOutputEnabled) {
+        speak(welcomeText);
+      }
     }
-  }, [responses.length]);
+  }, [responses.length, voiceOutputEnabled, speak]);
 
   const renderSuggestionIcon = (iconName: string) => {
     switch (iconName) {
@@ -298,6 +346,7 @@ const ActionPanel: React.FC = () => {
               </div>
             </div>
             
+            {/* Voice input button */}
             <button
               type="button"
               onClick={handleVoiceInput}
@@ -312,16 +361,39 @@ const ActionPanel: React.FC = () => {
             >
               <Mic className="h-5 w-5" />
             </button>
+            
+            {/* Voice output toggle button */}
+            <button
+              type="button"
+              onClick={toggleVoiceOutput}
+              className={cn(
+                "p-3 rounded-full transition-colors duration-200",
+                voiceOutputEnabled
+                  ? "bg-primary text-primary-foreground" 
+                  : "bg-secondary text-foreground hover:bg-secondary/80",
+                "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50"
+              )}
+              aria-label={voiceOutputEnabled ? "Disable voice output" : "Enable voice output"}
+            >
+              {voiceOutputEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            </button>
           </div>
         </form>
       </div>
       
-      {/* Voice recognition status indicator */}
-      {isListening && (
-        <div className="text-center py-2 text-sm text-primary animate-pulse">
-          Listening... Speak now.
-        </div>
-      )}
+      {/* Voice recognition/output status indicators */}
+      <div className="space-y-1">
+        {isListening && (
+          <div className="text-center py-2 text-sm text-primary animate-pulse">
+            Listening... Speak now.
+          </div>
+        )}
+        {isSpeaking && (
+          <div className="text-center py-2 text-sm text-primary">
+            Speaking... <button onClick={stopSpeaking} className="underline">Stop</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
