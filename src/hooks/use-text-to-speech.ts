@@ -64,8 +64,10 @@ const useTextToSpeech = ({
       return () => {
         if (synth.current) {
           try {
-            // Make sure to cancel any speech when component unmounts
-            synth.current.cancel();
+            if (synth.current.speaking) {
+              // Make sure to cancel any speech when component unmounts
+              synth.current.cancel();
+            }
           } catch (error) {
             console.error('Error canceling speech on unmount:', error);
           }
@@ -77,46 +79,13 @@ const useTextToSpeech = ({
     }
   }, [onError]);
 
-  // Speak the provided text
-  const speak = useCallback((text: string) => {
-    if (!synth.current) {
-      if (onError) onError('Speech synthesis is not available');
-      return;
-    }
-
-    try {
-      // Cancel any ongoing speech - this is important to prevent the "interrupted" error
-      if (synth.current.speaking) {
-        try {
-          synth.current.cancel();
-          // Small delay to ensure the previous speech is fully canceled
-          setTimeout(() => {
-            startSpeaking(text);
-          }, 50);
-        } catch (error) {
-          console.error('Error canceling previous speech:', error);
-          if (onError) onError(`Error canceling previous speech: ${error}`);
-        }
-      } else {
-        startSpeaking(text);
-      }
-    } catch (error) {
-      console.error('Error in speech synthesis:', error);
-      setIsSpeaking(false);
-      setIsPaused(false);
-      if (onError) onError(`Error in speech synthesis: ${error}`);
-    }
-  }, [rate, pitch, volume, voice, voices, onStart, onEnd, onError]);
-
-  // Helper function to start speaking - extracted to avoid code duplication
-  const startSpeaking = useCallback((text: string) => {
-    if (!synth.current) return;
+  // Helper function to create and configure a new utterance
+  const createUtterance = useCallback((text: string) => {
+    if (!synth.current) return null;
     
     try {
-      // Create a new utterance
       const utterance = new SpeechSynthesisUtterance(text);
-      utteranceRef.current = utterance;
-
+      
       // Set properties
       utterance.rate = rate;
       utterance.pitch = pitch;
@@ -127,6 +96,24 @@ const useTextToSpeech = ({
         const voiceIndex = Math.min(voice, voices.length - 1);
         utterance.voice = voices[voiceIndex];
       }
+      
+      return utterance;
+    } catch (error) {
+      console.error('Error creating utterance:', error);
+      return null;
+    }
+  }, [rate, pitch, volume, voice, voices]);
+
+  // Start speaking with proper error handling
+  const startSpeaking = useCallback((text: string) => {
+    if (!synth.current) return;
+    
+    try {
+      // Create a new utterance
+      const utterance = createUtterance(text);
+      if (!utterance) return;
+      
+      utteranceRef.current = utterance;
 
       // Set event handlers
       utterance.onstart = () => {
@@ -161,7 +148,41 @@ const useTextToSpeech = ({
       setIsSpeaking(false);
       if (onError) onError(`Error starting speech: ${error}`);
     }
-  }, [rate, pitch, volume, voice, voices, onStart, onEnd, onError]);
+  }, [createUtterance, onStart, onEnd, onError]);
+
+  // Speak the provided text
+  const speak = useCallback((text: string) => {
+    if (!synth.current) {
+      if (onError) onError('Speech synthesis is not available');
+      return;
+    }
+
+    try {
+      // Cancel any ongoing speech
+      if (synth.current.speaking) {
+        try {
+          // First cancel current speech
+          synth.current.cancel();
+          
+          // Wait a bit before starting new speech to avoid interrupted errors
+          setTimeout(() => {
+            startSpeaking(text);
+          }, 100);
+        } catch (error) {
+          console.error('Error canceling previous speech:', error);
+          if (onError) onError(`Error canceling previous speech: ${error}`);
+        }
+      } else {
+        // No ongoing speech, start immediately
+        startSpeaking(text);
+      }
+    } catch (error) {
+      console.error('Error in speech synthesis:', error);
+      setIsSpeaking(false);
+      setIsPaused(false);
+      if (onError) onError(`Error in speech synthesis: ${error}`);
+    }
+  }, [startSpeaking, onError]);
 
   // Stop speaking
   const stop = useCallback(() => {

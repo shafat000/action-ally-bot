@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { SendHorizontal, Mic, Globe, ShoppingCart, CalendarDays, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { ActionRequest, ActionResponse, SuggestionItem } from '@/types';
 import Response from './Response';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { popIn } from '@/utils/animations';
 import { v4 as uuidv4 } from 'uuid';
 import useVoiceRecognition from '@/hooks/use-voice-recognition';
@@ -86,15 +86,10 @@ const ActionPanel: React.FC = () => {
           variant: "destructive",
         });
       }
-      // Make sure to update UI state when there's an error
-      setIsProcessing(false);
     },
     onEnd: () => {
-      // Make sure UI state is updated when speech ends
-      if (isSpeaking) {
-        // Reset UI state only if we're still marked as speaking
-        // This prevents unnecessary rerenders
-      }
+      // Update UI state when speech ends if needed
+      // (intentionally minimal to avoid unnecessary rerenders)
     }
   });
   
@@ -161,6 +156,8 @@ const ActionPanel: React.FC = () => {
       if (isSpeaking) {
         try {
           stopSpeaking();
+          // Add a small delay to ensure speech is fully stopped
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (err) {
           console.error("Error stopping speech:", err);
           // Continue with the new request even if stopping fails
@@ -184,10 +181,20 @@ const ActionPanel: React.FC = () => {
         return [...filtered, finalResponse];
       });
       
+      // Update request status
+      setRequests(prev => 
+        prev.map(req => 
+          req.id === requestId ? { ...req, status: 'completed' } : req
+        )
+      );
+      
       // Speak the response if voice output is enabled
+      // Do this after updating the UI state to avoid state update issues
       if (voiceOutputEnabled) {
         try {
-          speak(responseText);
+          setTimeout(() => {
+            speak(responseText);
+          }, 100);
         } catch (err) {
           console.error("Error speaking response:", err);
           toast({
@@ -197,13 +204,6 @@ const ActionPanel: React.FC = () => {
           });
         }
       }
-      
-      // Update request status
-      setRequests(prev => 
-        prev.map(req => 
-          req.id === requestId ? { ...req, status: 'completed' } : req
-        )
-      );
     } catch (error) {
       toast({
         title: "Error",
@@ -239,10 +239,7 @@ const ActionPanel: React.FC = () => {
   };
   
   const toggleVoiceOutput = () => {
-    // First update state
-    setVoiceOutputEnabled(prev => !prev);
-    
-    // Then stop speaking if turning off voice output
+    // Stop speaking if we're turning off voice output while speaking
     if (voiceOutputEnabled && isSpeaking) {
       try {
         stopSpeaking();
@@ -250,6 +247,9 @@ const ActionPanel: React.FC = () => {
         console.error("Error stopping speech while toggling:", err);
       }
     }
+
+    // Then update state after stopping speech to avoid UI conflicts
+    setVoiceOutputEnabled(prev => !prev);
     
     // Show toast after state update
     toast({
@@ -276,11 +276,18 @@ const ActionPanel: React.FC = () => {
       ]);
       
       // Speak welcome message if voice output is enabled
+      // Use a timeout to ensure state is settled before speaking
       if (voiceOutputEnabled) {
-        speak(welcomeText);
+        setTimeout(() => {
+          try {
+            speak(welcomeText);
+          } catch (err) {
+            console.error("Error speaking welcome message:", err);
+          }
+        }, 500);
       }
     }
-  }, [responses.length, voiceOutputEnabled, speak]);
+  }, [responses.length, voiceOutputEnabled]);
 
   const renderSuggestionIcon = (iconName: string) => {
     switch (iconName) {
