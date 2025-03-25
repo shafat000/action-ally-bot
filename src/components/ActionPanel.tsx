@@ -83,6 +83,8 @@ const ActionPanel: React.FC = () => {
         description: errorMessage,
         variant: "destructive",
       });
+      // Make sure to update UI state when there's an error
+      setIsProcessing(false);
     }
   });
   
@@ -169,7 +171,16 @@ const ActionPanel: React.FC = () => {
       
       // Speak the response if voice output is enabled
       if (voiceOutputEnabled) {
-        speak(responseText);
+        try {
+          speak(responseText);
+        } catch (err) {
+          console.error("Error speaking response:", err);
+          toast({
+            title: "Voice Output Error",
+            description: "I couldn't speak the response. Using text only.",
+            variant: "destructive",
+          });
+        }
       }
       
       // Update request status

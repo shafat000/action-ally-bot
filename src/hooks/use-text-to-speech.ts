@@ -35,6 +35,7 @@ const useTextToSpeech = ({
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const synth = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const voicesLoadedRef = useRef(false);
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -43,8 +44,12 @@ const useTextToSpeech = ({
       
       // Get available voices
       const loadVoices = () => {
+        // Only update voices if they actually changed to prevent infinite loops
         const availableVoices = synth.current?.getVoices() || [];
-        setVoices(availableVoices);
+        if (availableVoices.length > 0 && !voicesLoadedRef.current) {
+          setVoices(availableVoices);
+          voicesLoadedRef.current = true;
+        }
       };
 
       // Chrome loads voices asynchronously
@@ -74,69 +79,90 @@ const useTextToSpeech = ({
       return;
     }
 
-    // Cancel any ongoing speech
-    synth.current.cancel();
+    try {
+      // Cancel any ongoing speech
+      if (synth.current.speaking) {
+        synth.current.cancel();
+      }
 
-    // Create a new utterance
-    const utterance = new SpeechSynthesisUtterance(text);
-    utteranceRef.current = utterance;
+      // Create a new utterance
+      const utterance = new SpeechSynthesisUtterance(text);
+      utteranceRef.current = utterance;
 
-    // Set properties
-    utterance.rate = rate;
-    utterance.pitch = pitch;
-    utterance.volume = volume;
+      // Set properties
+      utterance.rate = rate;
+      utterance.pitch = pitch;
+      utterance.volume = volume;
 
-    // Set voice if available
-    if (voices.length > 0) {
-      const voiceIndex = Math.min(voice, voices.length - 1);
-      utterance.voice = voices[voiceIndex];
+      // Set voice if available
+      if (voices.length > 0) {
+        const voiceIndex = Math.min(voice, voices.length - 1);
+        utterance.voice = voices[voiceIndex];
+      }
+
+      // Set event handlers
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        setIsPaused(false);
+        if (onStart) onStart();
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        setIsPaused(false);
+        if (onEnd) onEnd();
+      };
+
+      utterance.onerror = (event) => {
+        console.error('Speech synthesis error:', event);
+        setIsSpeaking(false);
+        setIsPaused(false);
+        if (onError) onError(`Speech synthesis error: ${event.error}`);
+      };
+
+      // Start speaking
+      synth.current.speak(utterance);
+    } catch (error) {
+      console.error('Error in speech synthesis:', error);
+      if (onError) onError(`Error in speech synthesis: ${error}`);
     }
-
-    // Set event handlers
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setIsPaused(false);
-      if (onStart) onStart();
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-      if (onEnd) onEnd();
-    };
-
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
-      if (onError) onError(`Speech synthesis error: ${event.error}`);
-    };
-
-    // Start speaking
-    synth.current.speak(utterance);
   }, [rate, pitch, volume, voice, voices, onStart, onEnd, onError]);
 
   // Stop speaking
   const stop = useCallback(() => {
     if (!synth.current) return;
     
-    synth.current.cancel();
-    setIsSpeaking(false);
-    setIsPaused(false);
+    try {
+      synth.current.cancel();
+      setIsSpeaking(false);
+      setIsPaused(false);
+    } catch (error) {
+      console.error('Error stopping speech:', error);
+    }
   }, []);
 
   // Pause speaking
   const pause = useCallback(() => {
     if (!synth.current || !isSpeaking || isPaused) return;
     
-    synth.current.pause();
-    setIsPaused(true);
+    try {
+      synth.current.pause();
+      setIsPaused(true);
+    } catch (error) {
+      console.error('Error pausing speech:', error);
+    }
   }, [isSpeaking, isPaused]);
 
   // Resume speaking
   const resume = useCallback(() => {
     if (!synth.current || !isPaused) return;
     
-    synth.current.resume();
-    setIsPaused(false);
+    try {
+      synth.current.resume();
+      setIsPaused(false);
+    } catch (error) {
+      console.error('Error resuming speech:', error);
+    }
   }, [isPaused]);
 
   return {
